@@ -1,0 +1,206 @@
+﻿@using System
+@using System.Net.Http
+@using Newtonsoft.Json
+@using KP.Api.Controllers
+@model KP.Api.Controllers.HomeController.PlaygroundMethodModel
+
+@{
+    ViewBag.Title = Model.Method.Description + ". Работа с объектами ШР. Игровой стенд";
+    Layout = "~/Views/_Layout.cshtml";
+}
+<style>
+    .params-table .name {
+        padding-right: 15px;
+        text-align: right;
+    }
+    .params-table td {
+        padding-top: 10px;
+    }
+</style>
+
+<script src="https://help.kontur.ru/scripts/plugin.min.js"></script>
+<script src="https://help.kontur.ru/scripts/toolbox.min.js"></script>
+<script>
+    var methodDesc = @Raw(JsonConvert.SerializeObject(Model.Method));
+    var driveError;
+
+    function watch() {
+        $("[field]").change(function() {
+            var name = $(this).attr("name");
+            var value = $(this).val() || "";
+            localStorage.setItem("kp.api/playground/" + name, value);
+        });
+    }
+
+    function authenticated() {
+        return true;
+    }
+
+    function store() {
+        $("[field]").each(function() {
+            var name = $(this).attr("name");
+            var value = $(this).val() || "";
+            localStorage.setItem("kp.api/playground/" + name, value);
+        });
+    }
+
+    function restore() {
+        $("[field]").each(function() {
+            var name = $(this).attr("name");
+            var value = localStorage.getItem("kp.api/playground/" + name) || "";
+            $(this).val(value);
+        });
+    }
+    function formatResponseHtml(text) {
+        return text.replace(/"(http[^"]*)"/ig, function(_, url) {
+            return '"<a href="' + url + '" target="_blank">' + url + '</a>"';
+        }).replace(/\\r\\n/g, "<br/>");
+    }
+
+    function sendRequest() {
+        store();
+        var url = methodDesc.UriTemplate;
+        var params = {};
+        var hasParams = false;
+        for (var i = 0; i < methodDesc.Parameters.length; ++i) {
+            var value = $("#param_" + methodDesc.Parameters[i].Name).val() || null;
+            if (!value && !methodDesc.Parameters[i].Optional) {
+                $("#param_" + methodDesc.Parameters[i].Name).addClass("field-red");
+            } else {
+                $("#param_" + methodDesc.Parameters[i].Name).removeClass("field-red");
+            }
+        }
+        var data = undefined;
+        for (var i = 0; i < methodDesc.Parameters.length; ++i) {
+            var value = $("#param_" + methodDesc.Parameters[i].Name).val() || null;
+            if (!value && !methodDesc.Parameters[i].Optional) {
+                return;
+            }
+            if (methodDesc.Parameters[i].FromUriTemplate) {
+                url = url.replace("{" + methodDesc.Parameters[i].Name + "}", value);
+            } else if (methodDesc.Parameters[i].FromBody) {
+                data = value;
+            } else {
+                if (value) {
+                    hasParams = true;
+                    params[methodDesc.Parameters[i].Name] = value;
+                }
+            }
+        }
+        var additionalParams = $("#additionalParams").val();
+        if (hasParams && additionalParams)
+            url = url + "?" + $.param(params) + "&" + additionalParams;
+        else if (hasParams)
+            url = url + "?" + $.param(params);
+        else if (additionalParams)
+            url = url + "?" + additionalParams;
+
+        $("#request").text(url);
+
+        if (methodDesc.IsContent) {
+            window.open(url, "_blank");
+            return;
+        }
+
+        createAjaxAndShow();
+        $("#response").text("Идет получение результата...").removeClass("text-error").removeClass("text-success");
+        $("#response-data").text("Идет получение результата...");
+
+        $.ajax({
+            type: "@Model.Method.Types[0]",
+            url: url,
+            data: data,
+            contentType: data ? "application/json" : undefined,
+            cache: false,
+            async: true,
+            success: function(json, _, req) {
+                ajaxStop();
+                $("#response").text(req.status + " " + req.statusText).addClass("text-success").removeClass("text-error");
+                $("#response-data").html(formatResponseHtml(JSON.stringify(json, null, 2)));
+            },
+            error: function(err) {
+                ajaxStop();
+                $("#response").text(err.status + " " + err.statusText).addClass("text-error").removeClass("text-success");
+                $("#response-data").html(formatResponseHtml(err.responseText));
+            }
+        });
+    }
+</script>
+<div class="main">
+    <div class="container">
+        <h1>KP.API 1.0</h1>
+        <a href="@(ResolveUrl("~/"))" class="link"><i class="icon icon-arrow-bold-left"></i>Назад</a>
+        <h2>@Model.Method.Description</h2>
+        <p>URL: <strong class="text-yellow">@Model.Method.UriTemplate</strong></p>
+        <p>HTTP-метод: <strong class="text-yellow">@string.Join("/", Model.Method.Types)</strong></p>
+
+        <h3>Параметры запроса</h3>
+
+        <table class="params-table">
+            @foreach (var paramDesc in Model.Method.Parameters)
+            {
+                <tr>
+                    <td class="name text-green">
+                        @if (paramDesc.Optional)
+                        {
+                            <span>@paramDesc.Name</span>
+                        }
+                        else
+                        {
+                            <strong>@paramDesc.Name</strong>
+                        }
+                    </td>
+                    <td>
+                        @if (paramDesc.FromBody)
+                        {
+                            <textarea field="true" id="param_@(paramDesc.Name)" name="@(paramDesc.Name)" style="width: 400px;height: 100px;" class="text-code" placeholder="@(paramDesc.Description)"></textarea>
+                        }
+                        else if (paramDesc.Name.IndexOf("driveUri", StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            <span class="field-group">
+                                <input field="true" id="param_@(paramDesc.Name)" name="@(paramDesc.Name)" class="field" type="text" style="width: 400px" placeholder="@paramDesc.Description" />
+                                <button class="btn icon icon-upload" onclick="uploadFile('@(paramDesc.Name)')"></button>
+                            </span>
+                        }
+                        else if (paramDesc.Values != null)
+                        {
+                            <input field="true" id="param_@(paramDesc.Name)" name="@(paramDesc.Name)" class="field" type="text" style="width: 400px" placeholder="@paramDesc.Description"
+                                   data-dropdown="search_@(paramDesc.Name)" data-dropdown-type="search" />
+                            <ul class="dropdown-list" data-dropdown-id="search_@(paramDesc.Name)">
+                                @foreach (var value in paramDesc.Values)
+                                {
+                                    <li>@value</li>
+                                }
+                            </ul>
+                        }
+                        else
+                        {
+                            <input field="true" id="param_@(paramDesc.Name)" name="@(paramDesc.Name)" class="field" type="text" style="width: 400px" placeholder="@paramDesc.Description"/>
+                        }
+                    </td>
+                </tr>
+            }
+            <tr>
+                <td class="name text-green">queryString</td>
+                <td><input field="true" id="additionalParams" name="additionalParams" class="field" type="text" style="width: 400px" placeholder="Дополнительные параметры" /></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td>
+                    <button class="btn btn-blue" onclick="sendRequest()">Отправить запрос</button>
+                </td>
+            </tr>
+        </table>
+
+        <h3>Отправленный запрос</h3>
+        <p class="text-code" id="request">Запрос еще не отправлен</p>
+
+        @if (!Model.Method.IsContent)
+        {
+            <h3>Ответ сервера</h3>
+            <p class="text-code" id="response">Запрос еще не отправлен</p>
+            <h3>Данные</h3>
+            <p class="text-code" style="white-space: pre" id="response-data">Запрос еще не отправлен</p>
+        }
+    </div>
+</div>

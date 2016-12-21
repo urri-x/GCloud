@@ -1,0 +1,59 @@
+﻿@using KP.Api.Controllers
+@model KP.Api.Controllers.HomeController.PlaygroundModel
+@{
+    ViewBag.Title = "Игровой стенд";
+    Layout = "~/Views/_Layout.cshtml";
+}
+<style>
+    .params-table .description {
+        padding-left: 15px
+    }
+</style>
+<div class="main">
+    <div class="container">
+        <h1>KP.API 1.0</h1>
+        <h2>Содержание</h2>
+        <ul>
+            <li>
+                <a href="#staffobjects" class="link">Работа с объектами ШР</a>
+                <ul>
+                    @foreach (var methodDesc in Model.StaffObjectsMethods)
+                    {
+                        <li><a href="#staffobjects_@(methodDesc.Name)" class="link">@methodDesc.Description</a></li>
+                    }
+                </ul>
+            </li>
+        </ul>
+        <h2><a name="staffobjects" />Работа с объектами ШР</h2>
+        @foreach (var methodDesc in Model.StaffObjectsMethods)
+        {
+            <h3><a name="staffobjects_@(methodDesc.Name)" />@methodDesc.Description</h3>
+            <table class="table">
+                <tbody>
+                    <tr>
+                        <td>URL</td>
+                        <td><a class="link" href="playground/v1/staffobjects/@(methodDesc.Name)">@methodDesc.UriTemplate</a></td>
+                    </tr>
+                    <tr>
+                        <td>HTTP-метод</td>
+                        <td>@(string.Join("/", methodDesc.Types))</td>
+                    </tr>
+                    <tr>
+                        <td>Параметры запроса</td>
+                        <td>
+                            <table class="params-table">
+                                @foreach (var paramDesc in methodDesc.Parameters)
+                                {
+                                    <tr>
+                                        <td class="text-yellow">@paramDesc.Name</td>
+                                        <td class="description">@paramDesc.Description</td>
+                                    </tr>
+                                }
+                            </table>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
